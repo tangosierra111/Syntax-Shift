@@ -11,9 +11,21 @@ import {
   Loader2,
   ChevronDown,
   Github,
-  Monitor
+  Monitor,
+  X,
+  Plus,
+  History
 } from 'lucide-react';
 import { convertCode, explainCode } from './lib/gemini';
+
+interface SavedSnippet {
+  id: string;
+  sourceLang: string;
+  targetLang: string;
+  sourceCode: string;
+  targetCode: string;
+  timestamp: number;
+}
 
 const LANGUAGES = [
   'Python', 'JavaScript', 'TypeScript', 'Dart/Flutter', 'Go', 'Rust', 'Java', 'C++', 
@@ -31,11 +43,30 @@ export default function App() {
   const [isExplaining, setIsExplaining] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [library, setLibrary] = useState<SavedSnippet[]>([]);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const sourceGutterRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLTextAreaElement>(null);
   const targetGutterRef = useRef<HTMLDivElement>(null);
+
+  // Load Library
+  useEffect(() => {
+    const saved = localStorage.getItem('polyglot_library');
+    if (saved) {
+      try {
+        setLibrary(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse library", e);
+      }
+    }
+  }, []);
+
+  // Save Library
+  useEffect(() => {
+    localStorage.setItem('polyglot_library', JSON.stringify(library));
+  }, [library]);
 
   const handleSourceScroll = () => {
     if (sourceRef.current && sourceGutterRef.current) {
@@ -112,6 +143,34 @@ export default function App() {
     setTargetCode(sourceCode);
   };
 
+  const saveToLibrary = () => {
+    if (!targetCode) return;
+    const newSnippet: SavedSnippet = {
+      id: Math.random().toString(36).substr(2, 9),
+      sourceLang,
+      targetLang,
+      sourceCode,
+      targetCode,
+      timestamp: Date.now()
+    };
+    setLibrary([newSnippet, ...library]);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const deleteFromLibrary = (id: string) => {
+    setLibrary(library.filter(s => s.id !== id));
+  };
+
+  const loadFromLibrary = (snippet: SavedSnippet) => {
+    setSourceLang(snippet.sourceLang);
+    setTargetLang(snippet.targetLang);
+    setSourceCode(snippet.sourceCode);
+    setTargetCode(snippet.targetCode);
+    setIsLibraryOpen(false);
+    setExplanation('');
+  };
+
   const renderLineNumbers = (code: string) => {
     const lines = code.split('\n').length;
     return Array.from({ length: Math.max(lines, 1) }).map((_, i) => (
@@ -139,8 +198,12 @@ export default function App() {
         </div>
         <nav className="flex gap-4 md:gap-8 text-[11px] font-bold tracking-widest uppercase items-center">
           <span className="text-[#D1FF00] border-b-2 border-[#D1FF00] pb-1 cursor-default">Translate</span>
-          <span className="opacity-40 hover:opacity-100 cursor-pointer transition-opacity">Library</span>
-          <span className="opacity-40 hover:opacity-100 cursor-pointer transition-opacity">Cloud API</span>
+          <span 
+            onClick={() => setIsLibraryOpen(true)}
+            className="opacity-40 hover:opacity-100 cursor-pointer transition-opacity"
+          >
+            Library
+          </span>
           <div className="w-[1px] h-4 bg-white/20" />
           <div className="flex items-center gap-2 opacity-70">
             <Monitor className="w-3 h-3" />
@@ -259,12 +322,22 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <span className={`text-[11px] font-bold font-mono uppercase tracking-wider transition-all ${targetCode ? 'text-[#D1FF00]' : 'opacity-50'}`}>{targetLang} Output</span>
                 {targetCode && (
-                  <button 
-                    onClick={copyToClipboard}
-                    className="hover:text-[#D1FF00] transition-colors"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={saveToLibrary}
+                      className="hover:text-[#D1FF00] transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold text-white/50"
+                      title="Save to Library"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Save
+                    </button>
+                    <button 
+                      onClick={copyToClipboard}
+                      className="hover:text-[#D1FF00] transition-colors"
+                    >
+                      {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -362,6 +435,89 @@ export default function App() {
           </div>
         </footer>
       </main>
+
+      {/* Library Sidebar */}
+      <AnimatePresence>
+        {isLibraryOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsLibraryOpen(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100]"
+            />
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-full max-w-md bg-[#161616] border-l border-white/10 z-[101] flex flex-col"
+            >
+              <div className="p-8 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <h2 className="text-[#D1FF00] font-black uppercase text-2xl tracking-tighter">Snippet Archive</h2>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.2em] opacity-40 mt-1">Local Registry Storage</p>
+                </div>
+                <button 
+                  onClick={() => setIsLibraryOpen(false)}
+                  className="w-10 h-10 border border-white/10 flex items-center justify-center hover:bg-white/5 transition-all text-white/50 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-auto p-6 space-y-4 font-mono">
+                {library.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-20 py-20 px-8">
+                    <History className="w-12 h-12 mb-4" />
+                    <p className="text-[10px] uppercase font-bold tracking-[0.3em]">No data records found in buffer</p>
+                  </div>
+                ) : (
+                  library.map((snippet) => (
+                    <div 
+                      key={snippet.id} 
+                      className="group p-4 bg-white/5 border border-white/5 hover:border-[#D1FF00]/30 transition-all relative"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-white/10 uppercase tracking-tighter">{snippet.sourceLang}</span>
+                          <ArrowRightLeft className="w-2.5 h-2.5 opacity-30" />
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-[#D1FF00]/20 text-[#D1FF00] uppercase tracking-tighter">{snippet.targetLang}</span>
+                        </div>
+                        <button 
+                          onClick={() => deleteFromLibrary(snippet.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      
+                      <div className="max-h-24 overflow-hidden mask-fade text-[11px] leading-tight text-white/40 mb-4 whitespace-pre">
+                        {snippet.targetCode}
+                      </div>
+
+                      <button 
+                        onClick={() => loadFromLibrary(snippet)}
+                        className="w-full py-2 bg-white/5 hover:bg-[#D1FF00] hover:text-black transition-all text-[10px] font-bold uppercase tracking-widest border border-white/10 hover:border-[#D1FF00]"
+                      >
+                        Mount Snippet
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              <div className="p-6 border-t border-white/10 bg-black/20">
+                <div className="flex justify-between items-baseline opacity-30 font-mono text-[9px] uppercase tracking-widest">
+                  <span>Capacity</span>
+                  <span>{library.length} / UNLIMITED</span>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
